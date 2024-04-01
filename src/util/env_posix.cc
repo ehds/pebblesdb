@@ -601,7 +601,9 @@ class PosixEnv : public Env {
                                    SequentialFile **result) {
     int flags = O_RDONLY;
     if(file_options.use_direct_reads) {
+#if !defined (OS_MACOSX)
         flags |= O_DIRECT;
+#endif        
     }
     int fd = ::open(fname.c_str(), flags);
     if (fd < 0) {
@@ -619,7 +621,7 @@ class PosixEnv : public Env {
     Status s;
     int flags = O_RDONLY;
     if(file_options.use_direct_reads) {
-#if !defined(__OSX__)
+#if !defined(OS_MACOSX)
         flags |= O_DIRECT;
 #endif
     }
@@ -642,11 +644,11 @@ class PosixEnv : public Env {
         mmap_limit_.Release();
       }
     } else {
-#if defined (__OSX__)
+#if defined (OS_MACOSX)
         if (fcntl(fd, F_NOCACHE, 1) == -1) {
           close(fd);
-          return IOError("while fcntl NoCache", fname, errno);
-        } 
+          return IOError("while fcntl NoCache", errno);
+        }
 #endif
       *result = new PosixRandomAccessFile(fname, fd, file_options);
     }

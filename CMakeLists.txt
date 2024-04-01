@@ -25,6 +25,12 @@ message(STATUS "PROJECT_SOURCE_DIR:  " ${PROJECT_SOURCE_DIR})
 # need to let "port_posix.h" to include "config.h"
 add_definitions(-DHAVE_CONFIG_H)
 
+if(CMAKE_SYSTEM_NAME MATCHES "Darwin")
+  add_definitions(-DOS_MACOSX)
+elseif(CMAKE_SYSTEM_NAME MATCHES "Linux")
+  add_definitions(-DOS_LINUX)
+endif()
+
 include(CheckCXXCompilerFlag)
 CHECK_CXX_COMPILER_FLAG(-fno-builtin-memcmp COMPILER_SUPPORTS_MEMCMP)
 CHECK_CXX_COMPILER_FLAG(-fno-builtin-memmove COMPILER_SUPPORTS_MEMMOVE)
