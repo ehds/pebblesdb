@@ -646,7 +646,7 @@ class PosixEnv : public Env {
         if (fcntl(fd, F_NOCACHE, 1) == -1) {
           close(fd);
           return IOError("while fcntl NoCache", fname, errno);
-        }
+        } 
 #endif
       *result = new PosixRandomAccessFile(fname, fd, file_options);
     }
