@@ -39,10 +39,12 @@ static void UnrefEntry(void* arg1, void* arg2) {
 
 TableCache::TableCache(const std::string& dbname,
                        const Options* options,
+                       const FileOptions* file_options,
                        int entries)
     : env_(options->env),
       dbname_(dbname),
       options_(options),
+      file_options_(file_options),
       cache_(NewLRUCache(entries)) {
 	for (int i = 0; i < NUM_SEEK_THREADS; i++) {
 		static_timers_[i] = new Timer();
@@ -77,11 +79,11 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
 		RandomAccessFile* file = NULL;
 		Table* table = NULL;
 		start_timer(GET_TABLE_CACHE_GET_NEW_RANDOM_ACCESS_FILE);
-		s = env_->NewRandomAccessFile(fname, &file);
+		s = env_->NewRandomAccessFile(fname, *file_options_, &file);
 		record_timer(GET_TABLE_CACHE_GET_NEW_RANDOM_ACCESS_FILE);
 		if (!s.ok()) {
 			std::string old_fname = LDBTableFileName(dbname_, file_number);
-			if (env_->NewRandomAccessFile(old_fname, &file).ok()) {
+			if (env_->NewRandomAccessFile(old_fname, *file_options_, &file).ok()) {
 				s = Status::OK();
 			}
 		}

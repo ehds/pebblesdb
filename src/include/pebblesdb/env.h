@@ -33,6 +33,9 @@ class Slice;
 class WritableFile;
 class ConcurrentWritableFile;
 class FileOptions;
+
+const size_t kDefaultPageSize = 4 * 1024;
+
 class Env
 {
 public:
@@ -238,6 +241,10 @@ public:
     virtual Status
     Skip(uint64_t n) = 0;
 
+    // Indicates the upper layers if the current SequentialFile implementation
+    // uses direct IO.
+    virtual bool use_direct_reads() {return false;}
+
 private:
     // No copying allowed
     SequentialFile(const SequentialFile &);
@@ -269,6 +276,10 @@ public:
     Read(uint64_t offset, size_t n, Slice *result,
          char *scratch) const = 0;
 
+    // Indicates the upper layers if the current SequentialFile implementation
+    // uses direct IO.
+    virtual bool use_direct_reads() const { return false; }
+    virtual size_t GetRequiredBufferAlignment() const{ return kDefaultPageSize; }
 private:
     // No copying allowed
     RandomAccessFile(const RandomAccessFile &);
@@ -376,6 +387,7 @@ private:
 class FileOptions {
 
   public:
+    FileOptions() : use_direct_reads(false) {}
     explicit FileOptions(Options options)
         : use_direct_reads(options.use_direct_reads) {}
     // If true, then use O_DIRECT for reading data
@@ -584,7 +596,7 @@ public:
     virtual pthread_t
     GetThreadId()
     {
-        target_->GetThreadId();
+        return target_->GetThreadId();
     }
 
 private:

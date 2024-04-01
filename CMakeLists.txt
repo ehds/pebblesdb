@@ -15,7 +15,7 @@ option(PEBBLESDB_INSTALL "Install PebblesDB's header and library" ON)
 option(PEBBLESDB_BUILD_TESTS "Build PeblesDB's unit tests" ON)
 
 # Setup the basic C++ Compiler flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-variadic-macros")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-variadic-macros -Wno-unused-but-set-variable")
 
 message(STATUS "CMAKE_SOURCE_DIR:    " ${CMAKE_SOURCE_DIR})
 
