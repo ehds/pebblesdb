@@ -21,6 +21,7 @@
 #include <vector>
 #include "db/dbformat.h"
 #include "db/version_edit.h"
+#include "pebblesdb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
 #include "util/timer.h"
@@ -458,6 +459,7 @@ class VersionSet {
  public:
   VersionSet(const std::string& dbname,
              const Options* options,
+             const FileOptions* file_options,
              TableCache* table_cache,
              const InternalKeyComparator*,
 			 Timer* timer);
@@ -850,6 +852,7 @@ class VersionSet {
   Env* const env_;
   const std::string dbname_;
   const Options* const options_;
+  const FileOptions* const file_options_;
   TableCache* const table_cache_;
   const InternalKeyComparator icmp_;
   uint64_t next_file_number_;

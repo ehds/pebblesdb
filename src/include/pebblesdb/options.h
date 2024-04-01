@@ -146,6 +146,19 @@ struct Options {
   // Default: false/no.
   bool manual_garbage_collection;
 
+  // Enable direct I/O mode for read/write
+  // they may or may not improve performance depending on the use case
+  //
+  // Files will be opened in "direct I/O" mode
+  // which means that data r/w from the disk will not be cached or
+  // buffered. The hardware buffer of the devices may however still
+  // be used. Memory mapped files are not impacted by these parameters.
+  // Use O_DIRECT for user and compaction reads.
+  //
+  // When true, we also force new_table_reader_for_compaction_inputs to true.
+  // Default: false
+  bool use_direct_reads;
+
   // Create an Options object with default values for all fields.
   Options();
 };

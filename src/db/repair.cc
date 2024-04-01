@@ -52,6 +52,7 @@ class Repairer {
         icmp_(options.comparator),
         ipolicy_(options.filter_policy),
         options_(SanitizeOptions(dbname, &icmp_, &ipolicy_, options)),
+        file_options_(options_),
         owns_info_log_(options_.info_log != options.info_log),
         owns_cache_(options_.block_cache != options.block_cache),
         table_cache_(),
@@ -62,7 +63,7 @@ class Repairer {
         tables_(),
         next_file_number_(1) {
     // TableCache can be small since we expect each table to be opened once.
-    table_cache_ = new TableCache(dbname_, &options_, 10);
+    table_cache_ = new TableCache(dbname_, &options_, &file_options_, 10);
   }
 
   ~Repairer() {
@@ -113,6 +114,7 @@ class Repairer {
   InternalKeyComparator const icmp_;
   InternalFilterPolicy const ipolicy_;
   Options const options_;
+  FileOptions const file_options_;
   bool owns_info_log_;
   bool owns_cache_;
   TableCache* table_cache_;
@@ -195,7 +197,7 @@ class Repairer {
     // Open the log file
     std::string logname = LogFileName(dbname_, log);
     SequentialFile* lfile;
-    Status status = env_->NewSequentialFile(logname, &lfile);
+    Status status = env_->NewSequentialFile(logname, file_options_, &lfile);
     if (!status.ok()) {
       return status;
     }

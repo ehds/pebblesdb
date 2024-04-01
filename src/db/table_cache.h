@@ -12,6 +12,7 @@
 #include <unordered_map>
 #include "db/dbformat.h"
 #include "pebblesdb/cache.h"
+#include "pebblesdb/env.h"
 #include "pebblesdb/table.h"
 #include "port/port.h"
 #include "util/timer.h"
@@ -24,7 +25,8 @@ class Env;
 
 class TableCache {
  public:
-  TableCache(const std::string& dbname, const Options* options, int entries);
+  TableCache(const std::string& dbname, const Options* options,
+    const FileOptions* file_options, int entries);
   ~TableCache();
 
   // Return an iterator for the specified file number (the corresponding
@@ -98,6 +100,7 @@ class TableCache {
   Env* const env_;
   const std::string dbname_;
   const Options* options_;
+  const FileOptions* file_options_;
   Cache* cache_;
   std::map<uint64_t, FileMetaData*> file_metadata_map;
 //  std::unordered_map<uint64_t, Cache::Handle*> cache_handle_map;

@@ -189,6 +189,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       filter_policy_(raw_options.filter_policy),
       options_(SanitizeOptions(dbname, &internal_comparator_,
                                &internal_filter_policy_, raw_options)),
+      file_options_(options_),
       owns_info_log_(options_.info_log != raw_options.info_log),
       owns_cache_(options_.block_cache != raw_options.block_cache),
       dbname_(dbname),
@@ -242,9 +243,10 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
   int max_open_files = options_.max_open_files;
   const int table_cache_size = max_open_files - kNumNonTableCacheFiles;
 
-  table_cache_ = new TableCache(dbname_, &options_, table_cache_size);
+  table_cache_ = new TableCache(dbname_, &options_,
+                   &file_options_, table_cache_size);
   timer = new Timer();
-  versions_ = new VersionSet(dbname_, &options_, table_cache_,
+  versions_ = new VersionSet(dbname_, &options_, &file_options_, table_cache_,
                              &internal_comparator_, timer);
 
   for (unsigned i = 0; i < leveldb::config::kNumLevels; ++i) {
@@ -545,7 +547,7 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
   // Open the log file
   std::string fname = LogFileName(dbname_, log_number);
   SequentialFile* file;
-  Status status = env_->NewSequentialFile(fname, &file);
+  Status status = env_->NewSequentialFile(fname, file_options_, &file);
   if (!status.ok()) {
     MaybeIgnoreError(&status);
     return status;
@@ -2034,7 +2036,6 @@ Status DBImpl::SequenceWriteBegin(Writer* w, WriteBatch* updates) {
 }
 
 void DBImpl::SequenceWriteEnd(Writer* w, WriteBatch* updates_with_guards, Status s) {
-  int a;
   if (!w->linked_) {
     return;
   }

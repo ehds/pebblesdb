@@ -198,7 +198,7 @@ class SpecialEnv : public EnvWrapper {
     return s;
   }
 
-  Status NewRandomAccessFile(const std::string& f, RandomAccessFile** r) {
+  Status NewRandomAccessFile(const std::string& f, const FileOptions& o, RandomAccessFile** r) {
     class CountingFile : public RandomAccessFile {
      private:
       RandomAccessFile* target_;
@@ -215,7 +215,7 @@ class SpecialEnv : public EnvWrapper {
       }
     };
 
-    Status s = target()->NewRandomAccessFile(f, r);
+    Status s = target()->NewRandomAccessFile(f, o, r);
     if (s.ok() && count_random_reads_) {
       *r = new CountingFile(*r, &random_read_counter_);
     }
@@ -3104,7 +3104,8 @@ void BM_LogAndApply(int iters, int num_base_files) {
 
   InternalKeyComparator cmp(BytewiseComparator());
   Options options;
-  VersionSet vset(dbname, &options, NULL, &cmp, NULL);
+  FileOptions file_options(options);
+  VersionSet vset(dbname, &options, &file_options, NULL, &cmp, NULL);
   ASSERT_OK(vset.Recover());
   VersionEdit vbase;
   uint64_t fnum = 1;

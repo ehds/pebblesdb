@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include "pebblesdb/options.h"
 #include "pebblesdb/status.h"
 
 namespace leveldb
@@ -31,6 +32,9 @@ class SequentialFile;
 class Slice;
 class WritableFile;
 class ConcurrentWritableFile;
+class FileOptions;
+
+const size_t kDefaultPageSize = 4 * 1024;
 
 class Env
 {
@@ -56,9 +60,9 @@ public:
     // not exist, returns a non-OK status.
     //
     // The returned file will only be accessed by one thread at a time.
-    virtual Status
-    NewSequentialFile(const std::string &fname,
-                      SequentialFile **result) = 0;
+    virtual Status NewSequentialFile(const std::string &fname,
+                                     const FileOptions &file_options,
+                                     SequentialFile **result) = 0;
 
     // Create a brand new random access read-only file with the
     // specified name.  On success, stores a pointer to the new file in
@@ -67,9 +71,9 @@ public:
     // status.
     //
     // The returned file may be concurrently accessed by multiple threads.
-    virtual Status
-    NewRandomAccessFile(const std::string &fname,
-                        RandomAccessFile **result) = 0;
+    virtual Status NewRandomAccessFile(const std::string &fname,
+                                       const FileOptions &file_options,
+                                       RandomAccessFile **result) = 0;
 
     // Create an object that writes to a new file with the specified
     // name.  Deletes any existing file with the same name and creates a
@@ -237,6 +241,10 @@ public:
     virtual Status
     Skip(uint64_t n) = 0;
 
+    // Indicates the upper layers if the current SequentialFile implementation
+    // uses direct IO.
+    virtual bool use_direct_reads() const{ return false; }
+
 private:
     // No copying allowed
     SequentialFile(const SequentialFile &);
@@ -268,6 +276,10 @@ public:
     Read(uint64_t offset, size_t n, Slice *result,
          char *scratch) const = 0;
 
+    // Indicates the upper layers if the current SequentialFile implementation
+    // uses direct IO.
+    virtual bool use_direct_reads() const { return false; }
+    virtual size_t GetRequiredBufferAlignment() const{ return kDefaultPageSize; }
 private:
     // No copying allowed
     RandomAccessFile(const RandomAccessFile &);
@@ -370,6 +382,18 @@ private:
     operator=(const FileLock &);
 };
 
+// File scope options that control how a file is opened/created and accessed
+// while its open.
+class FileOptions {
+
+  public:
+    FileOptions() : use_direct_reads(false) {}
+    explicit FileOptions(Options options)
+        : use_direct_reads(options.use_direct_reads) {}
+    // If true, then use O_DIRECT for reading data
+    bool use_direct_reads;
+};
+
 // Log the specified data to *info_log if info_log is non-NULL.
 extern void
 Log(Logger *info_log, const char *format, ...)
@@ -410,21 +434,18 @@ public:
         return target_;
     }
 
-
     // The following text is boilerplate that forwards all methods to target()
-    Status
-    NewSequentialFile(const std::string &f, SequentialFile **r)
+    Status NewSequentialFile(const std::string &f, const FileOptions &o,
+                             SequentialFile **r)
     {
-        return target_->NewSequentialFile(f, r);
+      return target_->NewSequentialFile(f, o, r);
     }
 
-
-    Status
-    NewRandomAccessFile(const std::string &f, RandomAccessFile **r)
+    Status NewRandomAccessFile(const std::string &f, const FileOptions &o,
+                               RandomAccessFile **r) 
     {
-        return target_->NewRandomAccessFile(f, r);
+      return target_->NewRandomAccessFile(f, o, r);
     }
-
 
     Status
     NewWritableFile(const std::string &f, WritableFile **r)
@@ -575,7 +596,7 @@ public:
     virtual pthread_t
     GetThreadId()
     {
-        target_->GetThreadId();
+        return target_->GetThreadId();
     }
 
 private:

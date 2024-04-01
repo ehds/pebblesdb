@@ -2007,12 +2007,14 @@ static void ConcurrentSeekTableIteratorWrapper(void* vset) {
 
 VersionSet::VersionSet(const std::string& dbname,
                        const Options* options,
+                       const FileOptions* file_options,
                        TableCache* table_cache,
                        const InternalKeyComparator* cmp,
 					   Timer* timer)
     : env_(options->env),
       dbname_(dbname),
       options_(options),
+      file_options_(file_options),
       table_cache_(table_cache),
       icmp_(*cmp),
       next_file_number_(2),
@@ -2429,7 +2431,7 @@ Status VersionSet::Recover() {
 
   std::string dscname = dbname_ + "/" + curfile;
   SequentialFile* file;
-  s = env_->NewSequentialFile(dscname, &file);
+  s = env_->NewSequentialFile(dscname, *file_options_, &file);
   if (!s.ok()) {
     return s;
   }

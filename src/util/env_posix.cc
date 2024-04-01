@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include <cstddef>
 #include <deque>
+#include <memory>
 #include <set>
 #include <dirent.h>
 #include <errno.h>
@@ -35,39 +37,49 @@ static Status IOError(const std::string& context, int err_number) {
   return Status::IOError(context, strerror(err_number));
 }
 
+  // Roundup x to a multiple of y
+  static size_t Roundup(size_t x, size_t y) {
+    return ((x + y - 1) / y) * y;
+  }
+
 class PosixSequentialFile: public SequentialFile {
  private:
   PosixSequentialFile(const PosixSequentialFile&);
   PosixSequentialFile& operator = (const PosixSequentialFile&);
   std::string filename_;
-  FILE* file_;
-
+  int fd_;
+  bool use_direct_reads_;
  public:
-  PosixSequentialFile(const std::string& fname, FILE* f)
-      : filename_(fname), file_(f) { }
-  virtual ~PosixSequentialFile() { fclose(file_); }
-
+  PosixSequentialFile(const std::string& fname, int fd, const FileOptions& file_opts)
+      : filename_(fname), fd_(fd), use_direct_reads_(file_opts.use_direct_reads) {}
+  virtual ~PosixSequentialFile() { close(fd_); }
+  
   virtual Status Read(size_t n, Slice* result, char* scratch) {
-    Status s;
-    size_t r = fread_unlocked(scratch, 1, n, file_);
-    *result = Slice(scratch, r);
-    if (r < n) {
-      if (feof(file_)) {
-        // We leave status as ok if we hit the end of the file
-      } else {
-        // A partial read with an error: return a non-ok status
-        s = IOError(filename_, errno);
+    assert(!use_direct_reads());
+    Status status;
+    while (true) {
+      ::ssize_t read_size = ::read(fd_, scratch, n);
+      if (read_size < 0) {  // Read error.
+        if (errno == EINTR) {
+          continue;  // Retry
+        }
+        status = IOError(filename_, errno);
+        break;
       }
+      *result = Slice(scratch, read_size);
+      break;
     }
-    return s;
+    return status;
   }
 
   virtual Status Skip(uint64_t n) {
-    if (fseek(file_, n, SEEK_CUR)) {
+    if (::lseek(fd_, n, SEEK_CUR)) {
       return IOError(filename_, errno);
     }
     return Status::OK();
   }
+
+ bool use_direct_reads() const override { return use_direct_reads_; }
 };
 
 // pread() based random-access
@@ -75,23 +87,45 @@ class PosixRandomAccessFile: public RandomAccessFile {
  private:
   std::string filename_;
   int fd_;
-
+  bool use_direct_reads_;
  public:
-  PosixRandomAccessFile(const std::string& fname, int fd)
-      : filename_(fname), fd_(fd) { }
+  PosixRandomAccessFile(const std::string& fname, int fd, const FileOptions& file_opts)
+      : filename_(fname), fd_(fd),use_direct_reads_(file_opts.use_direct_reads) { }
   virtual ~PosixRandomAccessFile() { close(fd_); }
 
   virtual Status Read(uint64_t offset, size_t n, Slice* result,
                       char* scratch) const {
     Status s;
-    ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
-    *result = Slice(scratch, (r < 0) ? 0 : r);
-    if (r < 0) {
-      // An error: return a non-ok status
-      s = IOError(filename_, errno);
+    size_t alignment = GetRequiredBufferAlignment();
+    bool is_aligned = (offset & (alignment - 1)) == 0 &&
+                 (n & (alignment - 1)) == 0 &&
+                 (uintptr_t(scratch) & (alignment - 1)) == 0;
+
+    if(use_direct_reads() && !is_aligned) {
+        size_t o = static_cast<size_t>(offset);
+        size_t aligned_offset = o - (o & (alignment-1));
+        size_t offset_advance = o - aligned_offset;
+        size_t read_size =
+          Roundup(static_cast<size_t>(offset + n), alignment) - aligned_offset;
+        std::unique_ptr<char[]> aligned_buffer(new char[read_size]);
+        ssize_t r = pread(fd_, aligned_buffer.get(), n, static_cast<off_t>(aligned_offset));
+        if (r < 0) {
+            // An error: return a non-ok status
+            s = IOError(filename_, errno);
+        }
+        memcpy(scratch, aligned_buffer.get() + offset_advance, n);
+    } else {
+        ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
+        *result = Slice(scratch, (r < 0) ? 0 : r);
+        if (r < 0) {
+            // An error: return a non-ok status
+            s = IOError(filename_, errno);
+        }
     }
     return s;
   }
+
+  bool use_direct_reads() const override { return use_direct_reads_; }
 };
 
 // Helper class to limit mmap file usage so that we do not end up
@@ -286,11 +320,6 @@ class PosixMmapFile : public ConcurrentWritableFile {
   uint64_t trunc_waiters_;  // number of threads waiting for truncate
   port::Mutex mtx_;         // Protection for state
   port::CondVar cnd_;       // Wait for truncate
-
-  // Roundup x to a multiple of y
-  static size_t Roundup(size_t x, size_t y) {
-    return ((x + y - 1) / y) * y;
-  }
 
   bool GrowViaTruncate(uint64_t block) {
     mtx_.Lock();
@@ -567,26 +596,39 @@ class PosixEnv : public Env {
     abort();
   }
 
-  virtual Status NewSequentialFile(const std::string& fname,
-                                   SequentialFile** result) {
-    FILE* f = fopen(fname.c_str(), "r");
-    if (f == NULL) {
-      *result = NULL;
-      return IOError(fname, errno);
-    } else {
-      *result = new PosixSequentialFile(fname, f);
-      return Status::OK();
+  virtual Status NewSequentialFile(const std::string &fname,
+                                   const FileOptions &file_options,
+                                   SequentialFile **result) {
+    int flags = O_RDONLY;
+    if(file_options.use_direct_reads) {
+#if !defined (OS_MACOSX)
+        flags |= O_DIRECT;
+#endif        
     }
+    int fd = ::open(fname.c_str(), flags);
+    if (fd < 0) {
+      *result = nullptr;
+      return IOError(fname, errno);
+    }
+    *result = new PosixSequentialFile(fname, fd, file_options);
+    return Status::OK();
   }
 
-  virtual Status NewRandomAccessFile(const std::string& fname,
-                                     RandomAccessFile** result) {
+  virtual Status NewRandomAccessFile(const std::string &fname,
+                                     const FileOptions &file_options,
+                                     RandomAccessFile **result) {
     *result = NULL;
     Status s;
-    int fd = open(fname.c_str(), O_RDONLY);
+    int flags = O_RDONLY;
+    if(file_options.use_direct_reads) {
+#if !defined(OS_MACOSX)
+        flags |= O_DIRECT;
+#endif
+    }
+    int fd = open(fname.c_str(), flags);
     if (fd < 0) {
       s = IOError(fname, errno);
-    } else if (false && mmap_limit_.Acquire()) {
+    } else if (!file_options.use_direct_reads && mmap_limit_.Acquire()) {
       uint64_t size;
       s = GetFileSize(fname, &size);
       if (s.ok()) {
@@ -602,7 +644,13 @@ class PosixEnv : public Env {
         mmap_limit_.Release();
       }
     } else {
-      *result = new PosixRandomAccessFile(fname, fd);
+#if defined (OS_MACOSX)
+        if (fcntl(fd, F_NOCACHE, 1) == -1) {
+          close(fd);
+          return IOError("while fcntl NoCache", errno);
+        }
+#endif
+      *result = new PosixRandomAccessFile(fname, fd, file_options);
     }
     return s;
   }
