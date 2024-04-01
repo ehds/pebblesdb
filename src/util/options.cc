@@ -23,7 +23,8 @@ Options::Options()
       block_restart_interval(16),
       compression(kNoCompression),
       filter_policy(NULL),
-      manual_garbage_collection(false) {
+      manual_garbage_collection(false),
+      use_direct_reads(false) {
 }
 
 

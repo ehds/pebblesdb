@@ -567,8 +567,9 @@ class PosixEnv : public Env {
     abort();
   }
 
-  virtual Status NewSequentialFile(const std::string& fname,
-                                   SequentialFile** result) {
+  virtual Status NewSequentialFile(const std::string &fname,
+                                   const FileOptions &file_options,
+                                   SequentialFile **result) {
     FILE* f = fopen(fname.c_str(), "r");
     if (f == NULL) {
       *result = NULL;
@@ -579,8 +580,9 @@ class PosixEnv : public Env {
     }
   }
 
-  virtual Status NewRandomAccessFile(const std::string& fname,
-                                     RandomAccessFile** result) {
+  virtual Status NewRandomAccessFile(const std::string &fname,
+                                     const FileOptions &file_options,
+                                     RandomAccessFile **result) {
     *result = NULL;
     Status s;
     int fd = open(fname.c_str(), O_RDONLY);
