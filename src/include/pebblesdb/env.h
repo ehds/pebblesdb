@@ -243,7 +243,7 @@ public:
 
     // Indicates the upper layers if the current SequentialFile implementation
     // uses direct IO.
-    virtual bool use_direct_reads() {return false;}
+    virtual bool use_direct_reads() const{ return false; }
 
 private:
     // No copying allowed

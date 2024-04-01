@@ -79,7 +79,7 @@ class PosixSequentialFile: public SequentialFile {
     return Status::OK();
   }
 
-  virtual bool use_direct_reads() const { return use_direct_reads_; }
+ bool use_direct_reads() const override { return use_direct_reads_; }
 };
 
 // pread() based random-access
@@ -124,6 +124,8 @@ class PosixRandomAccessFile: public RandomAccessFile {
     }
     return s;
   }
+
+  bool use_direct_reads() const override { return use_direct_reads_; }
 };
 
 // Helper class to limit mmap file usage so that we do not end up
@@ -617,7 +619,9 @@ class PosixEnv : public Env {
     Status s;
     int flags = O_RDONLY;
     if(file_options.use_direct_reads) {
+#if !defined(__OSX__)
         flags |= O_DIRECT;
+#endif
     }
     int fd = open(fname.c_str(), flags);
     if (fd < 0) {
@@ -638,6 +642,12 @@ class PosixEnv : public Env {
         mmap_limit_.Release();
       }
     } else {
+#if defined (__OSX__)
+        if (fcntl(fd, F_NOCACHE, 1) == -1) {
+          close(fd);
+          return IOError("while fcntl NoCache", fname, errno);
+        }
+#endif
       *result = new PosixRandomAccessFile(fname, fd, file_options);
     }
     return s;
