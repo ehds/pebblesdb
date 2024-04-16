@@ -5,7 +5,11 @@
 #include "pebblesdb/env.h"
 
 #include "port/port.h"
+#include "util/aligned_buffer.h"
 #include "util/testharness.h"
+#include <fcntl.h>
+#include <string>
+#include <unistd.h>
 
 namespace leveldb {
 
@@ -95,6 +99,39 @@ TEST(EnvPosixTest, StartThread) {
     Env::Default()->SleepForMicroseconds(kDelayMicros);
   }
   ASSERT_EQ(state.val, 3);
+}
+
+TEST(EnvPosixTest, DirectIO) {
+
+  std::string fname = "/tmp/dio_test";
+  {
+    WritableFile *file;
+    env_->NewWritableFile(fname, &file);
+
+    for (size_t i = 0; i < 100; i++) {
+      file->Append("hello" + std::to_string(i));
+    }
+
+    delete file;
+  }
+
+  {
+
+    RandomAccessFile *read_file;
+    FileOptions file_options;
+    file_options.use_direct_reads = true;
+    ASSERT_TRUE(
+        env_->NewRandomAccessFile(fname, file_options, &read_file).ok());
+    size_t offset = 0;
+    for (size_t i = 0; i < 100; i++) {
+      std::string expected = "hello" + std::to_string(i);
+      char buf[1024];
+      Slice result;
+      read_file->Read(offset, expected.size(), &result, buf);
+      ASSERT_EQ(result.ToString(), expected);
+      offset += expected.size();
+    }
+  }
 }
 
 }  // namespace leveldb
