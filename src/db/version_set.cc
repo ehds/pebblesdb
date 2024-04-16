@@ -2430,8 +2430,10 @@ Status VersionSet::Recover() {
   curfile.resize(curfile.size() - 1);
 
   std::string dscname = dbname_ + "/" + curfile;
+  FileOptions optimize_for_current_options = *file_options_;
+  optimize_for_current_options.use_direct_reads = false;
   SequentialFile* file;
-  s = env_->NewSequentialFile(dscname, *file_options_, &file);
+  s = env_->NewSequentialFile(dscname, optimize_for_current_options, &file);
   if (!s.ok()) {
     return s;
   }

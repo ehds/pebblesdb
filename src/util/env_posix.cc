@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file. See the AUTHORS file for names of contributors.
 
+#include "util/aligned_buffer.h"
 #include <cstddef>
 #include <deque>
 #include <memory>
@@ -107,13 +108,20 @@ class PosixRandomAccessFile: public RandomAccessFile {
         size_t offset_advance = o - aligned_offset;
         size_t read_size =
           Roundup(static_cast<size_t>(offset + n), alignment) - aligned_offset;
-        std::unique_ptr<char[]> aligned_buffer(new char[read_size]);
-        ssize_t r = pread(fd_, aligned_buffer.get(), n, static_cast<off_t>(aligned_offset));
+        AlignedBuffer aligned_buffer;
+        aligned_buffer.Alignment(alignment);
+        aligned_buffer.AllocateNewBuffer(read_size);
+        ssize_t r = pread(fd_, aligned_buffer.BufferStart(), read_size, static_cast<off_t>(aligned_offset));
         if (r < 0) {
             // An error: return a non-ok status
             s = IOError(filename_, errno);
+            return s;
         }
-        memcpy(scratch, aligned_buffer.get() + offset_advance, n);
+        aligned_buffer.Size(aligned_buffer.CurrentSize() + r);
+        size_t res_len =
+            std::min(n, aligned_buffer.CurrentSize() - offset_advance);
+        aligned_buffer.Read(scratch, offset_advance, res_len);
+        *result = Slice(scratch, res_len);
     } else {
         ssize_t r = pread(fd_, scratch, n, static_cast<off_t>(offset));
         *result = Slice(scratch, (r < 0) ? 0 : r);
@@ -625,7 +633,7 @@ class PosixEnv : public Env {
         flags |= O_DIRECT;
 #endif
     }
-    int fd = open(fname.c_str(), flags);
+    int fd = ::open(fname.c_str(), flags);
     if (fd < 0) {
       s = IOError(fname, errno);
     } else if (!file_options.use_direct_reads && mmap_limit_.Acquire()) {

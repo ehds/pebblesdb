@@ -274,6 +274,7 @@ class DBTest {
   // Return the current option configuration.
   Options CurrentOptions() {
     Options options;
+    options.use_direct_reads = true;
     switch (option_config_) {
       case kFilter:
         options.filter_policy = filter_policy_;

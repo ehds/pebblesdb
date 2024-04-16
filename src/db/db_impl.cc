@@ -547,7 +547,9 @@ Status DBImpl::RecoverLogFile(uint64_t log_number,
   // Open the log file
   std::string fname = LogFileName(dbname_, log_number);
   SequentialFile* file;
-  Status status = env_->NewSequentialFile(fname, file_options_, &file);
+  FileOptions optimize_for_log_options = file_options_;
+  optimize_for_log_options.use_direct_reads = false;
+  Status status = env_->NewSequentialFile(fname, optimize_for_log_options, &file);
   if (!status.ok()) {
     MaybeIgnoreError(&status);
     return status;
